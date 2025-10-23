@@ -1,0 +1,50 @@
+name: Generate and Update Documentation
+
+on:
+  push:
+    branches:
+      - main # Or your default branch like 'master'
+
+jobs:
+  build-docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Grant write permission to commit changes
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x' # Use a compatible Python version
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install llama-index-core llama-index-llms-gemini pydantic pydantic-settings iso639 loguru jedi tqdm markdown
+
+      - name: Run documentation generation script
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python scripts/generate_docs.py
+
+      - name: Check for changes and commit
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add markdown_docs .project_doc_record # Add your documentation output directories/files
+          
+          if ! git diff --staged --quiet; then
+            git commit -m "Docs: Auto-generated documentation update [skip ci]"
+            echo "::set-output name=committed::true"
+          else
+            echo "No documentation changes detected."
+            echo "::set-output name=committed::false"
+          fi
+
+      - name: Push changes
+        if: steps.commit.outputs.committed == 'true'
+        run: git push

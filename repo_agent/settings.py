@@ -56,16 +56,11 @@ class ProjectSettings(BaseSettings):
 
 
 class ChatCompletionSettings(BaseSettings):
-    model: str = "gpt-4o-mini"  # NOTE: No model restrictions for user flexibility, but it's recommended to use models with a larger context window.
+    weak_model_name: str = "gemini-1.5-flash"  # For tasks like query generation, reranking. Users can change this to "gemini-pro", "gemini-1.5-flash", etc.
+    strong_model_name: str = "gemini-1.5-pro"  # For final RAG response generation. Users can change this to "gemini-pro", "gemini-1.5-pro", etc.
     temperature: PositiveFloat = 0.2
     request_timeout: PositiveInt = 60
-    openai_base_url: str = "https://api.openai.com/v1"
-    openai_api_key: SecretStr = Field(..., exclude=True)
-
-    @field_validator("openai_base_url", mode="before")
-    @classmethod
-    def convert_base_url_to_str(cls, openai_base_url: HttpUrl) -> str:
-        return str(openai_base_url)
+    gemini_api_key: SecretStr = Field(..., exclude=True)
 
 
 class Setting(BaseSettings):
@@ -94,10 +89,11 @@ class SettingsManager:
         language: str,
         max_thread_count: int,
         log_level: str,
-        model: str,
+        weak_model_name: str,
+        strong_model_name: str,
         temperature: float,
         request_timeout: int,
-        openai_base_url: str,
+        gemini_api_key: str,
     ):
         project_settings = ProjectSettings(
             target_repo=target_repo,
@@ -110,10 +106,11 @@ class SettingsManager:
         )
 
         chat_completion_settings = ChatCompletionSettings(
-            model=model,
+            weak_model_name=weak_model_name,
+            strong_model_name=strong_model_name,
             temperature=temperature,
             request_timeout=request_timeout,
-            openai_base_url=openai_base_url,
+            gemini_api_key=SecretStr(gemini_api_key),
         )
 
         cls._setting_instance = Setting(

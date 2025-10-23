@@ -1,6 +1,7 @@
 import json
 
-from llama_index.llms.openai import OpenAI
+from llama_index.llms.gemini import GoogleGenerativeAI
+from repo_agent.settings import SettingsManager
 
 from repo_agent.chat_with_repo.json_handler import JsonFileProcessor
 from repo_agent.chat_with_repo.prompt import (
@@ -15,19 +16,28 @@ from repo_agent.log import logger
 
 
 class RepoAssistant:
-    def __init__(self, api_key, api_base, db_path):
+    def __init__(self, db_path):
         self.db_path = db_path
         self.md_contents = []
 
-        self.weak_model = OpenAI(
-            api_key=api_key,
-            api_base=api_base,
-            model="gpt-4o-mini",
+        setting = SettingsManager.get_setting()
+        gemini_api_key = setting.chat_completion.gemini_api_key.get_secret_value()
+        weak_model_name = setting.chat_completion.weak_model_name
+        strong_model_name = setting.chat_completion.strong_model_name
+        temperature = setting.chat_completion.temperature
+        request_timeout = setting.chat_completion.request_timeout
+
+        self.weak_model = GoogleGenerativeAI(
+            api_key=gemini_api_key,
+            model=weak_model_name,
+            temperature=temperature,
+            timeout=request_timeout,
         )
-        self.strong_model = OpenAI(
-            api_key=api_key,
-            api_base=api_base,
-            model="gpt-4o",
+        self.strong_model = GoogleGenerativeAI(
+            api_key=gemini_api_key,
+            model=strong_model_name,
+            temperature=temperature,
+            timeout=request_timeout,
         )
         self.textanslys = TextAnalysisTool(self.weak_model, db_path)
         self.json_data = JsonFileProcessor(db_path)
@@ -42,13 +52,15 @@ class RepoAssistant:
         return queries
 
     def rerank(self, query, docs):  # 这里要防止返回值格式上出问题
+        # GoogleGenerativeAI does not directly support response_format={"type": "json_object"}
+        # in the same way OpenAI does. The prompt itself should guide the model to output JSON.
         response = self.weak_model.chat(
-            response_format={"type": "json_object"},
             temperature=0,
             messages=relevance_ranking_chat_template.format_messages(
                 query=query, docs=docs
             ),
         )
+        # Assuming the model will still try to output JSON based on the prompt template.
         scores = json.loads(response.message.content)["documents"]  # type: ignore
         logger.debug(f"scores: {scores}")
         sorted_data = sorted(scores, key=lambda x: x["relevance_score"], reverse=True)
@@ -72,14 +84,14 @@ class RepoAssistant:
         return markdown_content
 
     def rag_ar(self, query, related_code, embedding_recall, project_name):
-        rag_ar_prompt = rag_ar_template.format_messages(
+        rag_ar_prompt_str = rag_ar_template.format(
             query=query,
             related_code=related_code,
             embedding_recall=embedding_recall,
             project_name=project_name,
         )
-        response = self.strong_model.chat(rag_ar_prompt)
-        return response.message.content
+        response = self.strong_model.complete(rag_ar_prompt_str)
+        return response.text
 
     def respond(self, message, instruction):
         """
