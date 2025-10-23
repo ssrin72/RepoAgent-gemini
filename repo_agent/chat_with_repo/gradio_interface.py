@@ -1,7 +1,11 @@
+import os
 import gradio as gr
 import markdown
+from pathlib import Path
 
 from repo_agent.log import logger
+from repo_agent.settings import SettingsManager
+from repo_agent.chat_with_repo.rag import RepoAssistant
 
 
 class GradioInterface:
@@ -197,12 +201,42 @@ class GradioInterface:
 
 # 使用方法
 if __name__ == "__main__":
+    # --- Configuration for testing ---
+    # Set your Gemini API key as an environment variable or replace os.getenv()
+    gemini_api_key = os.getenv("GEMINI_API_KEY")
+    if not gemini_api_key:
+        raise ValueError(
+            "GEMINI_API_KEY environment variable not set. Please set it to your Gemini API key."
+        )
 
-    def respond_function(msg, system):
-        RAG = """
+    # Path to your sample repository (e.g., current directory or a specific test repo)
+    # For a real test, you should point this to the root of a Python project.
+    target_repo_path = Path("./")  
 
-        
-        """
-        return msg, RAG, "Embedding_recall_output", "Key_words_output", "Code_output"
+    # Define a path for the database file
+    db_path = "./repo_docs_db.json"
+
+    # Initialize settings manager
+    SettingsManager.initialize_with_params(
+        target_repo=target_repo_path,
+        markdown_docs_name="markdown_docs",
+        hierarchy_name=".project_doc_record",
+        ignore_list=[],
+        language="English",
+        max_thread_count=4,
+        log_level="INFO",
+        weak_model_name="gemini-1.5-flash",  # Or your preferred weak model
+        strong_model_name="gemini-1.5-pro",  # Or your preferred strong model
+        temperature=0.2,
+        request_timeout=60,
+        gemini_api_key=gemini_api_key,
+    )
+
+    # Initialize RepoAssistant
+    repo_assistant = RepoAssistant(db_path=db_path)
+
+    def respond_function(msg_input, system_input):
+        # Call the respond method of the initialized RepoAssistant instance
+        return repo_assistant.respond(msg_input, system_input)
 
     gradio_interface = GradioInterface(respond_function)
